@@ -12,4 +12,9 @@ if __name__ == '__main__':
 	for i in range(1, sheet.nrows):
 		print 'looping-------'
 		single = Task(sheet, i)
-		single.excute()
+		result = -1
+		retry_count = 0
+		while result != 0 and retry_count < 5:
+			result = single.excute()
+			retry_count += 1
+
