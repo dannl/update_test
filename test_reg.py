@@ -1,8 +1,12 @@
 #!/usr/bin/python
-from statics import *
-import os
+import re
 
-if not os.path.exists(RESULT_DIR):
-	print '===create result dir==='
-	os.mkdir(RESULT_DIR)
+m = re.compile('.*UpateTestResult.*?====(\w+)====')
 
+output = 'soadufosudUpateTestResultouoweurouwouwer====holy====\nsoadufosudUpateTestResultouoweurouwouwer====holy====soadufosudUpateTestResultouoweurouwouwer====holy====soadufosudUpateTestResultouoweurouwouwer====holy====soadufosudUpateTestResultouoweurouwouwer====holy===='
+
+result = m.search(output)
+
+print result
+
+print result.group(1)
