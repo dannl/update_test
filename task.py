@@ -1,4 +1,7 @@
 from statics import *
+from xlutils.copy import copy
+from xlrd import open_workbook
+from xlwt import Workbook
 import os
 from os import path
 import subprocess
@@ -22,9 +25,7 @@ TASK_TYPE_SHELL_JETPACK_ONEPKG = 'shell_jetpack_onepkg';
 
 TASK_TYPE_ONEPKG_ONEPKG = 'onepkg_onepkg';
 
-TASK_TYPE_10_X = 'v10_v11';
-
-TASK_TYPE_11_X = 'v11_v11';
+TASK_TYPE_NORMAL = 'normal';
 
 class Task(object):
 
@@ -63,56 +64,68 @@ class Task(object):
 			print'%s does not exists!!' % self.to_file
 			return 0
 
-		result_file = ''
-		if self.task_type == TASK_TYPE_SHELL_ONEPKG:
-			result_file = TEST_RESULT_SHELL_ONEPKG
-		elif self.task_type == TASK_TYPE_SHELL_JETPACK_ONEPKG:
-			result_file = TEST_RESULT_SHELL_JETPACK_ONEPKG
-		elif self.task_type == TASK_TYPE_ONEPKG_ONEPKG:
-			result_file = TEST_RESULT_ONEPKG_ONEPKG
-		elif self.task_type == TASK_TYPE_10_X:
-			result_file = TEST_RESULT_V10_V11
-		elif self.task_type == TASK_TYPE_11_X:
-			result_file = TEST_RESULT_V11_V11
-			
+		result_file = 'running_result.xls'
+
 		#first of all, remove the result file.
 		try:
+			#remove result file.
 			subprocess.check_call('adb shell \'rm sdcard/%s\'' % result_file, shell=True)
-			subprocess.check_call('adb shell \'rm sdcard/jetpack_update\'', shell=True)
+			#remove temp preference.
+			subprocess.check_call('adb shell \'rm sdcard/temp_preference\'', shell=True)
+			#remove apk pair 
+			subprocess.check_call('adb shell \'rm sdcard/temp_input\'', shell=True)
 		except Exception:
 			pass
 
+		#write in the from apk name and to apk name.
+		try:
+			from_file_name = self.from_file_name.replace('.apk','')
+			to_file_name = self.to_file_name.replace('.apk','')
+			temp_file = open('temp_input', 'w')
+			temp_file.write('%s+%s' % (from_file_name, to_file_name))
+			subprocess.check_call('adb push temp_input /sdcard/temp_input', shell=True)
+			os.remove('temp_input')
+		except Exception:
+			write_total_case_result(self, "Failed on pushing file to sdcard!")
+			return NEXT_TASK
+
 		_uninstall_jetpack()
 
-		update_loop_result = "continue"
+		update_loop_result = CONTROL_RESTART
 
-		while update_loop_result == 'continue':
+		while update_loop_result == CONTROL_RESTART:
 			
 			print '===install old version==='
 			install_result = _install_dolphin(self.from_file, True)
 
 
 			if install_result != 0:
-				return -1
+				return RESTART_TASK
 
 			if self.from_jetpack:
 				install_result = _install_dolphin(self.from_jetpack, False)
 
 			if install_result != 0:
-				return -1
+				return RESTART_TASK
 
 			#sleep for 5 secs.
 			time.sleep(5)
 
 			print '===run test case before upate==='
-			result_before_update = _run_test_case(self.task_type)
+			result_before_update = _run_test_case(self.from_file_name, self.task_type)
 
 			time.sleep(3)
 
-			if result_before_update == 'failed':
-				return -1
-			elif result_before_update == 'uninstall_jetpack':
+			if result_before_update == CONTROL_FAILED:
+				#write the result to the total result.
+				write_total_case_result(self, 'Failed on running case before update')
+				return NEXT_TASK
+			elif result_before_update == CONTROL_CLEAN_RESTART:
+				return RESTART_TASK
+			elif result_before_update == CONTROL_UNINSTALL_JETPACK:
 				_uninstall_jetpack()
+			# elif result_before_update == INSTRUMENTATION_ERR_SUBPROCESS:
+			# 	return 
 
 			#sleep for 10 secs to ensure the dolphin is already closed.
 			time.sleep(10)
@@ -121,18 +134,23 @@ class Task(object):
 			install_result = _install_dolphin(self.to_file, False)
 
 			if install_result != 0:
-				return -1
+				return RESTART_TASK
 
 			time.sleep(5)
 
 			print '===run test case after update==='
-			update_loop_result = _run_test_case(self.task_type)
+			update_loop_result = _run_test_case(self.to_file_name, self.task_type)
 			print '======================loop control====================='
 			print update_loop_result
 			time.sleep(3)
 			
-			if update_loop_result == 'failed':
-				return -1
+			if update_loop_result == CONTROL_FAILED:
+				write_total_case_result(self, 'Failed on running case after update')
+				return NEXT_TASK
+			elif update_loop_result == CONTROL_CLEAN_RESTART:
+				return RESTART_TASK
+			elif update_loop_result == CONTROL_RESTART:
+				pass
 
 
 
@@ -146,11 +164,14 @@ class Task(object):
 				shutil.rmtree(result_dir)
 			os.mkdir(result_dir)
 			subprocess.check_call('adb pull /sdcard/%s %s' % (result_file, result_dir), shell=True)
+			abs_file_path = path.join(result_dir, result_file)
+			validate_result(self, abs_file_path)
 		except subprocess.CalledProcessError:
 			print '===failed to opt adb result==='
-			return -1
+			write_total_case_result(self, 'Failed to pull file from phone')
+			return RESTART_TASK
 
-		return 0
+		return NEXT_TASK
 
 	def to_string(self):
 		return "%s_%s_%s_%s" % (self.from_file_name, self.from_jetpack_string, self.to_file_name, self.task_type)
@@ -171,41 +192,64 @@ def _install_dolphin(package_path, uninstall):
 		print 'failed to install apk %s' % package_path
 		return err.returncode
 
-def _run_test_case(task_type):
+def _run_test_case(apk_file, task_type):
 
 
-	logout = 'restart'
-	while logout == 'restart':
+	logout = CONTROL_CONTINUE
+	retry_count = 0
+	while logout == CONTROL_CONTINUE:
 		print '===clean logs==='
 		subprocess.check_output('adb logcat -c', shell=True)
-		case_name = ''
-		if task_type == TASK_TYPE_SHELL_ONEPKG:
-			case_name = TEST_CLASS_SHELL_ONEPKG
-		elif task_type == TASK_TYPE_SHELL_JETPACK_ONEPKG:
-			case_name = TEST_CLASS_SHELL_JETPACK_ONEPKG
-		elif task_type == TASK_TYPE_ONEPKG_ONEPKG:
-			case_name = TEST_CLASS_ONEPKG_ONEPKG
-		elif task_type == TASK_TYPE_10_X:
-			case_name = TEST_CLASS_V10_V11
-		elif task_type == TASK_TYPE_11_X:
-			case_name = TEST_CLASS_V11_V11
+		case_name = _format_case_name(apk_file, task_type)
+		# if task_type == TASK_TYPE_SHELL_ONEPKG:
+		# 	case_name = TEST_CLASS_SHELL_ONEPKG
+		# elif task_type == TASK_TYPE_SHELL_JETPACK_ONEPKG:
+		# 	case_name = TEST_CLASS_SHELL_JETPACK_ONEPKG
+		# elif task_type == TASK_TYPE_ONEPKG_ONEPKG:
+		# 	case_name = TEST_CLASS_ONEPKG_ONEPKG
+		# elif task_type == TASK_TYPE_10_X:
+		# 	case_name = TEST_CLASS_V10_V11
+		# elif task_type == TASK_TYPE_11_X:
+		# 	case_name = TEST_CLASS_V11_V11
+		# elif task_type == TASK_TYPE_10_10:
+		# 	case_name = TEST_CLASS_V10_V10
+		call_result = ''
 		try:
-			command = 'adb shell am instrument -e class %s -w %s' % (TEST_CLASS_FORMAT % case_name, PACKAGE_TEST_CASE)
-			subprocess.check_call(command, shell=True)
+			command = 'adb shell am instrument -e class %s -w %s' % (case_name, PACKAGE_TEST_CASE)
+			call_result = subprocess.check_call(command, shell=True)
 		except subprocess.CalledProcessError:
 			print 'failed to run class %s ' % case_name
-			return 'failed'
-
-		log = subprocess.check_output('adb logcat -d', shell=True)
-		logout = _check_output(log)
+			return INSTRUMENTATION_ERR_SUBPROCESS
+		#while process crash happen., retry this case for 5 times.
+		#if crash always happens, restart the entier task.
+		if call_result == INSTRUMENTATION_ERR_PROCESS_CRASHED:
+			retry_count += 1
+			if retry_count == 5:
+				logout = CONTROL_CONTINUE
+			else:
+				logout = CONTROL_CLEAN_RESTART
+		elif call_result == INSTRUMENTATION_ERR_FAILURES:
+			logout = CONTROL_FAILED
+		else:
+			log = subprocess.check_output('adb logcat -d', shell=True)
+			logout = _check_output(log)
 	return logout
+
+#check the instrumentation outout.
+def _check_instrumentation_output(log):
+	if re.search('Process\ crashed', log):
+		return INSTRUMENTATION_ERR_PROCESS_CRASHED
+	elif re.search('FAILURES', log):
+		return INSTRUMENTATION_ERR_FAILURES
+	else:
+		return INSTRUMENTATION_OK
 
 def _check_output(log):
 	m = TEST_UNINSTALL_JETPACK_REG.search(log)
 	if not m:
 		m = TEST_CASE_OUTPUT_REG.search(log)
 		if not m:
-			return 'failed'
+			return CONTROL_FAILED
 	return m.group(1)
 
 def _uninstall_jetpack():
@@ -214,7 +258,74 @@ def _uninstall_jetpack():
 	except Exception:
 		pass
 
-	
+def _format_case_name(from_file, task_type):
+	if task_type == TASK_TYPE_SHELL_ONEPKG:
+		case_name = KERNAL_TEST_CLASS_FORMAT % TEST_CLASS_SHELL_ONEPKG
+	elif task_type == TASK_TYPE_SHELL_JETPACK_ONEPKG:
+		case_name = KERNAL_TEST_CLASS_FORMAT % TEST_CLASS_SHELL_JETPACK_ONEPKG
+	elif task_type == TASK_TYPE_ONEPKG_ONEPKG:
+		case_name = KERNAL_TEST_CLASS_FORMAT % TEST_CLASS_ONEPKG_ONEPKG
+	elif task_type == TASK_TYPE_NORMAL:
+		case_name == NORMAL_TEST_CLASS
+	return case_name
+
+def write_total_case_result(task, result):
+	if not path.exists(RESULT_DIR):
+		print '===create result dir==='
+		os.mkdir(RESULT_DIR)
+	from_row = 0
+	book = None
+	if path.exists(TOTAL_RESULT_FILE):
+		book = open_workbook(TOTAL_RESULT_FILE)
+		sheet = book.sheet_by_index(0)
+		from_row = sheet.nrows
+	wb = None
+	if book:
+		wb = copy(book)
+	else:
+		wb = Workbook()
+
+	ws = None
+	try:
+		ws = wb.get_sheet(0)
+	except Exception:
+		pass
+	if not ws:
+		ws = wb.add_sheet('total_result')
+
+	if from_row == 0:
+		ws.row(0).write(0, 'from apk')
+		ws.row(0).write(1, 'from jetpack')
+		ws.row(0).write(2, 'to apk')
+		ws.row(0).write(3, 'type')
+		ws.row(0).write(4, 'result')
+		from_row += 1
+	ws.row(from_row).write(0, task.from_file_name)
+	ws.row(from_row).write(1, task.from_jetpack_string)
+	ws.row(from_row).write(2, task.to_file_name)
+	ws.row(from_row).write(3, task.task_type)
+	ws.row(from_row).write(4, result)
+
+	wb.save(TOTAL_RESULT_FILE)
+
+def validate_result(task, result_path):
+	print '===========result path========='
+	print result_path
+	if os.path.exists(result_path):
+		book = open_workbook(result_path)
+		sheet = book.sheet_by_index(0)
+		column_count = sheet.ncols
+		row_count = sheet.nrows
+		if column_count == 0 or row_count == 0:
+			write_total_case_result(task, 'Result is empty!')
+		for x in xrange(1, row_count):
+			if sheet.cell_value(x, column_count - 1) == 'Failed':
+				write_total_case_result(task, 'Failed')
+				return
+		write_total_case_result(task, 'Passed')
+	else:
+		write_total_case_result(task, 'Result File not found')
+
 class task_error(Exception):
 
 	def __init__(self, value):
