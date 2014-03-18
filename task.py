@@ -69,11 +69,11 @@ class Task(object):
 		#first of all, remove the result file.
 		try:
 			#remove result file.
-			subprocess.check_call('adb shell \'rm sdcard/%s\'' % result_file, shell=True)
+			subprocess.check_call('adb shell rm sdcard/%s' % result_file, shell=True)
 			#remove temp preference.
-			subprocess.check_call('adb shell \'rm sdcard/temp_preference\'', shell=True)
+			subprocess.check_call('adb shell rm sdcard/temp_preference', shell=True)
 			#remove apk pair 
-			subprocess.check_call('adb shell \'rm sdcard/temp_input\'', shell=True)
+			subprocess.check_call('adb shell rm sdcard/temp_input', shell=True)
 		except Exception:
 			pass
 
@@ -83,6 +83,7 @@ class Task(object):
 			to_file_name = self.to_file_name.replace('.apk','')
 			temp_file = open('temp_input', 'w')
 			temp_file.write('%s+%s' % (from_file_name, to_file_name))
+			temp_file.close()
 			subprocess.check_call('adb push temp_input /sdcard/temp_input', shell=True)
 			os.remove('temp_input')
 		except Exception:
@@ -109,12 +110,12 @@ class Task(object):
 				return RESTART_TASK
 
 			#sleep for 5 secs.
-			time.sleep(5)
+			time.sleep(10)
 
 			print '===run test case before upate==='
 			result_before_update = _run_test_case(self.from_file_name, self.task_type)
 
-			time.sleep(3)
+			time.sleep(10)
 
 			if result_before_update == CONTROL_FAILED:
 				#write the result to the total result.
@@ -136,13 +137,13 @@ class Task(object):
 			if install_result != 0:
 				return RESTART_TASK
 
-			time.sleep(5)
+			time.sleep(10)
 
 			print '===run test case after update==='
 			update_loop_result = _run_test_case(self.to_file_name, self.task_type)
 			print '======================loop control====================='
 			print update_loop_result
-			time.sleep(3)
+			time.sleep(10)
 			
 			if update_loop_result == CONTROL_FAILED:
 				write_total_case_result(self, 'Failed on running case after update')
@@ -216,7 +217,11 @@ def _run_test_case(apk_file, task_type):
 		call_result = ''
 		try:
 			command = 'adb shell am instrument -e class %s -w %s' % (case_name, PACKAGE_TEST_CASE)
-			call_result = subprocess.check_call(command, shell=True)
+			call_result = subprocess.check_output(command, shell=True)
+			print "call_result"
+			print call_result
+			call_result = _check_instrumentation_output(call_result)
+			print "after check call result: " + call_result
 		except subprocess.CalledProcessError:
 			print 'failed to run class %s ' % case_name
 			return INSTRUMENTATION_ERR_SUBPROCESS
@@ -231,8 +236,10 @@ def _run_test_case(apk_file, task_type):
 		elif call_result == INSTRUMENTATION_ERR_FAILURES:
 			logout = CONTROL_FAILED
 		else:
+			print 'check nomal out put'
 			log = subprocess.check_output('adb logcat -d', shell=True)
 			logout = _check_output(log)
+			print logout
 	return logout
 
 #check the instrumentation outout.
@@ -259,6 +266,7 @@ def _uninstall_jetpack():
 		pass
 
 def _format_case_name(from_file, task_type):
+	case_name = ''
 	if task_type == TASK_TYPE_SHELL_ONEPKG:
 		case_name = KERNAL_TEST_CLASS_FORMAT % TEST_CLASS_SHELL_ONEPKG
 	elif task_type == TASK_TYPE_SHELL_JETPACK_ONEPKG:
@@ -266,7 +274,7 @@ def _format_case_name(from_file, task_type):
 	elif task_type == TASK_TYPE_ONEPKG_ONEPKG:
 		case_name = KERNAL_TEST_CLASS_FORMAT % TEST_CLASS_ONEPKG_ONEPKG
 	elif task_type == TASK_TYPE_NORMAL:
-		case_name == NORMAL_TEST_CLASS
+		case_name = NORMAL_TEST_CLASS
 	return case_name
 
 def write_total_case_result(task, result):
