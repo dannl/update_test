@@ -244,7 +244,7 @@ def _run_test_case(apk_file, task_type):
 
 #check the instrumentation outout.
 def _check_instrumentation_output(log):
-	if re.search('Process\ crashed', log):
+	if re.search('Process\ crashed', log) or re.search('Native\ crash', log):
 		return INSTRUMENTATION_ERR_PROCESS_CRASHED
 	elif re.search('FAILURES', log):
 		return INSTRUMENTATION_ERR_FAILURES
