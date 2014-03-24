@@ -12,7 +12,7 @@ if __name__ == '__main__':
 	if os.path.exists(TOTAL_RESULT_FILE):
 		os.remove(TOTAL_RESULT_FILE)
 
-	for i in range(4, sheet.nrows):
+	for i in range(1, sheet.nrows):
 		print 'looping-------'
 		# if i == 1 or i == 3:
 		# 	continue

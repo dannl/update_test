@@ -244,7 +244,7 @@ def _run_test_case(apk_file, task_type):
 
 #check the instrumentation outout.
 def _check_instrumentation_output(log):
-	if re.search('Process\ crashed', log) or re.search('Native\ crash', log):
+	if re.search('Process\ crashed', log) or re.search('Native\ crash', log) or re.search('Exception', log):
 		return INSTRUMENTATION_ERR_PROCESS_CRASHED
 	elif re.search('FAILURES', log):
 		return INSTRUMENTATION_ERR_FAILURES
@@ -327,8 +327,8 @@ def validate_result(task, result_path):
 		if column_count == 0 or row_count == 0:
 			write_total_case_result(task, 'Result is empty!')
 		for x in xrange(1, row_count):
-			if sheet.cell_value(x, column_count - 1) == 'Failed':
-				write_total_case_result(task, 'Failed')
+			if sheet.cell_value(x, column_count - 1) == 'FAILED':
+				write_total_case_result(task, 'FAILED')
 				return
 		write_total_case_result(task, 'Passed')
 	else:
