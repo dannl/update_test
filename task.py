@@ -183,11 +183,11 @@ def _install_dolphin(package_path, uninstall):
 		if uninstall:
 			print '===uninstall dolphin==='
 			try:
-				result = subprocess.check_call('adb uninstall \'%s\'' % PACKAGE_NAME, shell=True)
+				result = subprocess.check_call('adb uninstall "%s"' % PACKAGE_NAME, shell=True)
 			except Exception:
 				pass
 		print '===install dolphin==='
-		result = subprocess.check_call('adb install -r \'%s\'' % package_path, shell=True)
+		result = subprocess.check_call('adb install -r "%s"' % package_path, shell=True)
 		return result
 	except subprocess.CalledProcessError as err:
 		print 'failed to install apk %s' % package_path
