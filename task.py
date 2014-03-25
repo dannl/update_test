@@ -183,11 +183,11 @@ def _install_dolphin(package_path, uninstall):
 		if uninstall:
 			print '===uninstall dolphin==='
 			try:
-				result = subprocess.check_call('adb uninstall %s' % PACKAGE_NAME, shell=True)
+				result = subprocess.check_call('adb uninstall \'%s\'' % PACKAGE_NAME, shell=True)
 			except Exception:
 				pass
 		print '===install dolphin==='
-		result = subprocess.check_call('adb install -r %s' % package_path, shell=True)
+		result = subprocess.check_call('adb install -r \'%s\'' % package_path, shell=True)
 		return result
 	except subprocess.CalledProcessError as err:
 		print 'failed to install apk %s' % package_path
@@ -275,6 +275,7 @@ def _format_case_name(from_file, task_type):
 		case_name = KERNAL_TEST_CLASS_FORMAT % TEST_CLASS_ONEPKG_ONEPKG
 	elif task_type == TASK_TYPE_NORMAL:
 		case_name = NORMAL_TEST_CLASS
+	print case_name
 	return case_name
 
 def write_total_case_result(task, result):
@@ -327,7 +328,8 @@ def validate_result(task, result_path):
 		if column_count == 0 or row_count == 0:
 			write_total_case_result(task, 'Result is empty!')
 		for x in xrange(1, row_count):
-			if sheet.cell_value(x, column_count - 1) == 'FAILED':
+			cell_value = sheet.cell_value(x, column_count - 1)
+			if cell_value == 'FAILED' or cell_value == 'FAILED_BEFORE_UPDATE':
 				write_total_case_result(task, 'FAILED')
 				return
 		write_total_case_result(task, 'Passed')
