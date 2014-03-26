@@ -181,6 +181,15 @@ class Task(object):
 def _install_dolphin(package_path, uninstall):
 	try:
 		if uninstall:
+			try:
+				ps = subprocess.check_output('adb shell ps', shell=True)
+				result = re.search('.+/watch_server', ps)
+				if result:
+					sub = re.findall('\ ([0-9]+)\ ', result.group(0))
+					if sub and len(sub) > 0:
+						subprocess.check_call('adb shell kill ' + sub[0], shell=True)
+			except Exception:
+				pass
 			print '===uninstall dolphin==='
 			try:
 				result = subprocess.check_call('adb uninstall "%s"' % PACKAGE_NAME, shell=True)

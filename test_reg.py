@@ -6,10 +6,10 @@ from statics import *
 import shutil
 from os import listdir
 from os.path import isfile, join
-onlyfiles = [ f for f in listdir(SRC_DIR) if isfile(join(SRC_DIR,f)) ]
+# onlyfiles = [ f for f in listdir(SRC_DIR) if isfile(join(SRC_DIR,f)) ]
 
-for f in onlyfiles:
-	subprocess.check_call('sign \'%s\'' % join(SRC_DIR, f), shell=True)
+# for f in onlyfiles:
+# 	subprocess.check_call('sign \'%s\'' % join(SRC_DIR, f), shell=True)
 
 # def _check_instrumentation_output(log):
 # 	if re.search('Process\ crashed', log):
@@ -45,4 +45,13 @@ for f in onlyfiles:
 # except subprocess.CalledProcessError:
 # 	print 'failed to run class %s ' % case_name
 # shutil.rmtree(RESULT_DIR)
+ps = subprocess.check_output('adb shell ps', shell=True)
+result = re.search('.+/watch_server', ps)
+if result:
+	sub = re.findall('\ ([0-9]+)\ ', result.group(0))
+	if sub and len(sub) > 0:
+		subprocess.check_call('adb shell kill ' + sub[0], shell=True)
+	# subprocess.check_call('adb shell kill ')
+
+
 
