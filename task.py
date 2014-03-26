@@ -164,9 +164,9 @@ class Task(object):
 			if path.exists(result_dir):
 				shutil.rmtree(result_dir)
 			os.mkdir(result_dir)
-			subprocess.check_call('adb pull /sdcard/%s %s' % (result_file, result_dir), shell=True)
-			abs_file_path = path.join(result_dir, result_file)
-			validate_result(self, abs_file_path)
+			pc_result_file = path.join(result_dir, self.to_string() + '.xls')
+			subprocess.check_call('adb pull /sdcard/%s %s' % (result_file, pc_result_file), shell=True)
+			validate_result(self, pc_result_file)
 		except subprocess.CalledProcessError:
 			print '===failed to opt adb result==='
 			write_total_case_result(self, 'Failed to pull file from phone')

@@ -21,8 +21,11 @@ if __name__ == '__main__':
 		retry_count = 0
 		while result != NEXT_TASK and retry_count < 5:
 			if retry_count != 0:
-				subprocess.check_call('adb kill-server', shell=True)
-				subprocess.check_call('adb start-server', shell=True)
+				try:
+					subprocess.check_call('adb kill-server', shell=True)
+					subprocess.check_call('adb start-server', shell=True)
+				except Exception:
+					pass
 			result = single.excute()
 			retry_count += 1
 		if result != NEXT_TASK:
