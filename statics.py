@@ -24,9 +24,9 @@ TEST_CLASS_SHELL_JETPACK_ONEPKG = 'TestKernal_shell_jetpack_onepkg'
 
 TEST_CLASS_ONEPKG_ONEPKG = 'TestKernal_onepkg_onepkg'
 
-TEST_CASE_OUTPUT_REG = re.compile('.*UpateTestResult.*?====(\w+)====')
+TEST_CASE_OUTPUT_REG = re.compile('.*TEST.*?====(\w+)====')
 
-TEST_UNINSTALL_JETPACK_REG = re.compile('.*UpateTestResult.*?=====(\w+)=====')
+TEST_UNINSTALL_JETPACK_REG = re.compile('.*TEST.*?=====(\w+)=====')
 
 RESTART_TASK = -1
 
