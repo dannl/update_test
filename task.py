@@ -8,7 +8,6 @@ import subprocess
 import shutil
 import time
 import re
-from multiprocessing import Process, Pipe
 
 COLUMN_COUNT = 4;
 
@@ -203,59 +202,41 @@ def _install_dolphin(package_path, uninstall):
 		print 'failed to install apk %s' % package_path
 		return err.returncode
 
-def _run_test_case_impl(command, connection):
-	call_result = ''
-	try:
-		call_result = subprocess.check_output(command, shell=True)
-		print "call_result"
-		print call_result
-		call_result = _check_instrumentation_output(call_result)
-		print "after check call result: " + call_result
-	except subprocess.CalledProcessError:
-		print 'failed to run class %s ' % case_name
-		call_result = INSTRUMENTATION_ERR_SUBPROCESS
-	connection.send(call_result)
-	connection.close()
-
 def _run_test_case(apk_file, task_type):
+
+
 	logout = CONTROL_CONTINUE
 	retry_count = 0
 	while logout == CONTROL_CONTINUE:
 		print '===clean logs==='
 		subprocess.check_output('adb logcat -c', shell=True)
 		case_name = _format_case_name(apk_file, task_type)
-		command = 'adb shell am instrument -e class %s -w %s' % (case_name, PACKAGE_TEST_CASE)
-		# try:
-		# 	command = 'adb shell am instrument -e class %s -w %s' % (case_name, PACKAGE_TEST_CASE)
-		# 	call_result = subprocess.check_output(command, shell=True)
-		# 	print "call_result"
-		# 	print call_result
-		# 	call_result = _check_instrumentation_output(call_result)
-		# 	print "after check call result: " + call_result
-		# except subprocess.CalledProcessError:
-		# 	print 'failed to run class %s ' % case_name
-		# 	return INSTRUMENTATION_ERR_SUBPROCESS
+		# if task_type == TASK_TYPE_SHELL_ONEPKG:
+		# 	case_name = TEST_CLASS_SHELL_ONEPKG
+		# elif task_type == TASK_TYPE_SHELL_JETPACK_ONEPKG:
+		# 	case_name = TEST_CLASS_SHELL_JETPACK_ONEPKG
+		# elif task_type == TASK_TYPE_ONEPKG_ONEPKG:
+		# 	case_name = TEST_CLASS_ONEPKG_ONEPKG
+		# elif task_type == TASK_TYPE_10_X:
+		# 	case_name = TEST_CLASS_V10_V11
+		# elif task_type == TASK_TYPE_11_X:
+		# 	case_name = TEST_CLASS_V11_V11
+		# elif task_type == TASK_TYPE_10_10:
+		# 	case_name = TEST_CLASS_V10_V10
+		call_result = ''
+		try:
+			command = 'adb shell am instrument -e class %s -w %s' % (case_name, PACKAGE_TEST_CASE)
+			call_result = subprocess.check_output(command, shell=True)
+			print "call_result"
+			print call_result
+			call_result = _check_instrumentation_output(call_result)
+			print "after check call result: " + call_result
+		except subprocess.CalledProcessError:
+			print 'failed to run class %s ' % case_name
+			return INSTRUMENTATION_ERR_SUBPROCESS
 		#while process crash happen., retry this case for 5 times.
 		#if crash always happens, restart the entier task.
-		main_p_cone, main_c_cone = Pipe()
-		checking_p_cone, checking_c_cone = Pipe()
-		main = Process(target=_run_test_case_impl, args=(command, main_c_cone))
-		checking_thread = Process(target=_check_task_timeout, args=(main, checking_c_cone))
-		main.start()
-		checking_thread.start()
-		main.join()
-		print '==========after running test cases=========='
-		checking_result = checking_p_cone.recv()
-		
-		if not checking_result:
-			print 'getting main t result'
-			call_result = main_p_cone.recv()
-
-		checking_thread.terminate()
-
-		if checking_result:
-			logout = CONTROL_CLEAN_RESTART
-		elif call_result == INSTRUMENTATION_ERR_PROCESS_CRASHED:
+		if call_result == INSTRUMENTATION_ERR_PROCESS_CRASHED:
 			retry_count += 1
 			if retry_count == 5:
 				logout = CONTROL_CONTINUE
@@ -269,27 +250,6 @@ def _run_test_case(apk_file, task_type):
 			logout = _check_output(log)
 			print logout
 	return logout
-
-def _check_task_timeout(main, cone):
-	lastlog = ''
-	while True:
-		log = subprocess.check_output('adb logcat -d', shell=True)
-		log_result = str(re.findall('.+excute\ result:.+', log))
-		print '=====checking thread result:'
-		print log_result
-		print 'last log:'
-		print lastlog
-		if lastlog == str(log_result):
-			#logs do not changed after 10 mins, so terminate the testcase thread.
-			print '==========terminate the testcase thread.'
-			main.terminate()
-			cone.send(CONTROL_CLEAN_RESTART)
-			cone.close()
-			break
-		lastlog = str(log_result)
-		#sleep for 10 mins for each checking.
-		time.sleep(600)
-
 
 #check the instrumentation outout.
 def _check_instrumentation_output(log):
