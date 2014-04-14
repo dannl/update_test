@@ -43,6 +43,8 @@ class Task(object):
 
 	task_type = ''
 
+	adb_command = 'adb '
+
 	def __init__(self, sheet, row):
 		if sheet.ncols != COLUMN_COUNT:
 			raise task_error('bad formated of tasks, task sheet column should be %d' % COLUMN_COUNT)
@@ -55,6 +57,10 @@ class Task(object):
 		self.to_file_name = sheet.cell_value(row, COLUMN_TO_APK)
 		self.to_file = path.join(SRC_DIR, self.to_file_name)
 		self.task_type = sheet.cell_value(row, COLUMN_TASK_TYPE)
+
+	def setdevice(self, device):
+		self.adb_command = "adb -s " + device + " "
+		print self.adb_command
 
 	def excute(self):
 		if not path.exists(self.from_file):
@@ -69,13 +75,14 @@ class Task(object):
 		#first of all, remove the result file.
 		try:
 			#remove result file.
-			subprocess.check_call('adb shell rm sdcard/%s' % result_file, shell=True)
+			subprocess.check_call('%s shell rm sdcard/%s' % (self.adb_command, result_file), shell=True)
 			#remove temp preference.
-			subprocess.check_call('adb shell rm sdcard/temp_preference', shell=True)
+			subprocess.check_call(self.adb_command + 'shell rm sdcard/temp_preference', shell=True)
 			#remove apk pair 
-			subprocess.check_call('adb shell rm sdcard/temp_input', shell=True)
-		except Exception:
-			pass
+			subprocess.check_call(self.adb_command + 'shell rm sdcard/temp_input', shell=True)
+		except Exception, e:
+			print e
+			
 
 		#write in the from apk name and to apk name.
 		try:
@@ -84,27 +91,31 @@ class Task(object):
 			temp_file = open('temp_input', 'w')
 			temp_file.write('%s+%s' % (from_file_name, to_file_name))
 			temp_file.close()
-			subprocess.check_call('adb push temp_input /sdcard/temp_input', shell=True)
+			subprocess.check_call(self.adb_command + 'push temp_input /sdcard/temp_input', shell=True)
 			os.remove('temp_input')
 		except Exception:
 			write_total_case_result(self, "Failed on pushing file to sdcard!")
 			return NEXT_TASK
 
-		_uninstall_jetpack()
+		_uninstall_jetpack(self.adb_command)
 
 		update_loop_result = CONTROL_RESTART
 
+		restart_count = 0
+
 		while update_loop_result == CONTROL_RESTART:
 			
+			print 'restart count: =====',restart_count
+			restart_count += 1
 			print '===install old version==='
-			install_result = _install_dolphin(self.from_file, True)
+			install_result = _install_dolphin(self.adb_command, self.from_file, True)
 
 
 			if install_result != 0:
 				return RESTART_TASK
 
 			if self.from_jetpack:
-				install_result = _install_dolphin(self.from_jetpack, False)
+				install_result = _install_dolphin(self.adb_command, self.from_jetpack, False)
 
 			if install_result != 0:
 				return RESTART_TASK
@@ -113,7 +124,7 @@ class Task(object):
 			time.sleep(10)
 
 			print '===run test case before upate==='
-			result_before_update = _run_test_case(self.from_file_name, self.task_type)
+			result_before_update = _run_test_case(self.adb_command, self.from_file_name, self.task_type)
 
 			time.sleep(10)
 
@@ -124,7 +135,7 @@ class Task(object):
 			elif result_before_update == CONTROL_CLEAN_RESTART:
 				return RESTART_TASK
 			elif result_before_update == CONTROL_UNINSTALL_JETPACK:
-				_uninstall_jetpack()
+				_uninstall_jetpack(self.adb_command)
 			# elif result_before_update == INSTRUMENTATION_ERR_SUBPROCESS:
 			# 	return 
 
@@ -132,7 +143,7 @@ class Task(object):
 			time.sleep(10)
 
 			print '===install new version==='
-			install_result = _install_dolphin(self.to_file, False)
+			install_result = _install_dolphin(self.adb_command, self.to_file, False)
 
 			if install_result != 0:
 				return RESTART_TASK
@@ -140,7 +151,7 @@ class Task(object):
 			time.sleep(10)
 
 			print '===run test case after update==='
-			update_loop_result = _run_test_case(self.to_file_name, self.task_type)
+			update_loop_result = _run_test_case(self.adb_command, self.to_file_name, self.task_type)
 			print '======================loop control====================='
 			print update_loop_result
 			time.sleep(10)
@@ -165,7 +176,7 @@ class Task(object):
 				shutil.rmtree(result_dir)
 			os.mkdir(result_dir)
 			pc_result_file = path.join(result_dir, self.to_string() + '.xls')
-			subprocess.check_call('adb pull /sdcard/%s %s' % (result_file, pc_result_file), shell=True)
+			subprocess.check_call(self.adb_command + 'pull /sdcard/%s %s' % (result_file, pc_result_file), shell=True)
 			validate_result(self, pc_result_file)
 		except subprocess.CalledProcessError:
 			print '===failed to opt adb result==='
@@ -178,38 +189,38 @@ class Task(object):
 		return "%s_%s_%s_%s" % (self.from_file_name, self.from_jetpack_string, self.to_file_name, self.task_type)
 
 			
-def _install_dolphin(package_path, uninstall):
+def _install_dolphin(adb_command, package_path, uninstall):
 	try:
 		if uninstall:
 			try:
-				ps = subprocess.check_output('adb shell ps', shell=True)
+				ps = subprocess.check_output(adb_command + 'shell ps', shell=True)
 				result = re.search('.+/watch_server', ps)
 				if result:
 					sub = re.findall('\ ([0-9]+)\ ', result.group(0))
 					if sub and len(sub) > 0:
-						subprocess.check_call('adb shell kill ' + sub[0], shell=True)
+						subprocess.check_call(adb_command + 'shell kill ' + sub[0], shell=True)
 			except Exception:
 				pass
 			print '===uninstall dolphin==='
 			try:
-				result = subprocess.check_call('adb uninstall "%s"' % PACKAGE_NAME, shell=True)
+				result = subprocess.check_call(adb_command + 'uninstall "%s"' % PACKAGE_NAME, shell=True)
 			except Exception:
 				pass
 		print '===install dolphin==='
-		result = subprocess.check_call('adb install -r "%s"' % package_path, shell=True)
+		result = subprocess.check_call(adb_command + 'install -r "%s"' % package_path, shell=True)
 		return result
 	except subprocess.CalledProcessError as err:
 		print 'failed to install apk %s' % package_path
 		return err.returncode
 
-def _run_test_case(apk_file, task_type):
+def _run_test_case(adb_command, apk_file, task_type):
 
 
 	logout = CONTROL_CONTINUE
 	retry_count = 0
 	while logout == CONTROL_CONTINUE:
 		print '===clean logs==='
-		subprocess.check_output('adb logcat -c', shell=True)
+		subprocess.check_output(adb_command + 'logcat -c', shell=True)
 		case_name = _format_case_name(apk_file, task_type)
 		# if task_type == TASK_TYPE_SHELL_ONEPKG:
 		# 	case_name = TEST_CLASS_SHELL_ONEPKG
@@ -225,7 +236,7 @@ def _run_test_case(apk_file, task_type):
 		# 	case_name = TEST_CLASS_V10_V10
 		call_result = ''
 		try:
-			command = 'adb shell am instrument -e class %s -w %s' % (case_name, PACKAGE_TEST_CASE)
+			command = adb_command + 'shell am instrument -e class %s -w %s' % (case_name, PACKAGE_TEST_CASE)
 			call_result = subprocess.check_output(command, shell=True)
 			print "call_result"
 			print call_result
@@ -246,7 +257,7 @@ def _run_test_case(apk_file, task_type):
 			logout = CONTROL_FAILED
 		else:
 			print 'check nomal out put'
-			log = subprocess.check_output('adb logcat -d', shell=True)
+			log = subprocess.check_output(adb_command + 'logcat -d', shell=True)
 			logout = _check_output(log)
 			print logout
 	return logout
@@ -268,9 +279,9 @@ def _check_output(log):
 			return CONTROL_FAILED
 	return m.group(1)
 
-def _uninstall_jetpack():
+def _uninstall_jetpack(adb_command):
 	try:
-		subprocess.check_call('adb uninstall com.dolphin.browser.engine', shell=True)
+		subprocess.check_call(adb_command + 'uninstall com.dolphin.browser.engine', shell=True)
 	except Exception:
 		pass
 
