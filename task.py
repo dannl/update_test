@@ -250,9 +250,9 @@ def _run_test_case(adb_command, apk_file, task_type):
 		if call_result == INSTRUMENTATION_ERR_PROCESS_CRASHED:
 			retry_count += 1
 			if retry_count == 5:
-				logout = CONTROL_CONTINUE
-			else:
 				logout = CONTROL_CLEAN_RESTART
+			else:
+				logout = CONTROL_CONTINUE
 		elif call_result == INSTRUMENTATION_ERR_FAILURES:
 			logout = CONTROL_FAILED
 		else:
